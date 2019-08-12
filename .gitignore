@@ -30,3 +30,22 @@
 *.exe
 *.out
 *.app
+
+# Additional files
+.vs/
+/.vs
+Debug/
+Release/
+x64/
+x86/
+TarArchiverLinux/~/
+TarArchiverLinux/bin/
+TarArchiverLinux/obj/
+TarArchiver/Debug/
+TarArchiver/x64/
+TarArchiver/x86/
+
+# Additional files
+*.sln
+*.vcxproj
+*.vcxproj*
