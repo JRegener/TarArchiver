@@ -1,6 +1,7 @@
 #pragma once
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <pwd.h>
@@ -9,7 +10,7 @@
 
 #include "../TarCommon.h"
 
-typedef std::vector<std::string> VectorString;
+typedef std::vector<std::string> VecStr;
 
 class TarPacker
 {
@@ -19,18 +20,18 @@ private:
 	ContentData buffer; 
 
 
-	bool pack(std::ofstream & targetFile, const std::string & path, const std::string & name);
+	bool packInternal(std::ofstream & targetFile, const std::string & path, const std::string & name);
 
 public:
 	void pack(const std::string & path);
 
-	VectorString getDirectoryFiles(const std::string & directory);
+	bool getDirectoryFiles(const std::string & directory, VecStr & files);
 
-	void addExpand(std::ofstream & output);
+	void packDirectory(std::ofstream & targetFile, const std::string & path, const struct stat & s);
 
-	void packDirectory(std::ofstream & targetFile, const std::string & path, struct stat & s);
+	bool packRegFile(std::ofstream & targetFile, const std::string & path, const std::string & name, const struct stat & s);
 
-	bool packRegFile(std::ofstream & targetFile, const std::string & path, const std::string & name, struct stat & s);
+	bool packBlockFile(std::ofstream & targetFile, const std::string & path, const std::string & name, const struct stat & s);
 
 	void writeContentToTargetFile(const std::unique_ptr<HeaderInfo> & headerInfo,
 		std::ifstream & input, std::ofstream & output);
@@ -39,7 +40,7 @@ public:
 
 	std::string getDirFileName(const std::string & path);
 
-	HeaderInfo * createHeader(const std::string & path, int8_t typeflag, struct stat & s);
+	HeaderInfo * createHeader(const std::string & path, int8_t typeflag, const struct stat & s);
 
 	PosixHeader convertHeader(const HeaderInfo & headerInfo);
 

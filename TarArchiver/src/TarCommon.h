@@ -44,7 +44,7 @@
 #define TOWRITE  00002          /* write by other */
 #define TOEXEC   00001          /* execute/search by other */
 
-/* i don't know why st_mode return this value (0100655) */
+/* 1 - type of file 655 - permissions (0100655) */
 #define RWX 0777
 
 struct PosixHeader
@@ -88,8 +88,8 @@ struct HeaderInfo
 	std::string version;
 	std::string uname;
 	std::string gname;
-	uint32_t devmajor;		/* for blk files (only for UNIX?) */
-	uint32_t devminor;		/* for blk files (only for UNIX?) */
+	size_t devmajor;		/* for blk files (only for UNIX?) */
+	size_t devminor;		/* for blk files (only for UNIX?) */
 	std::string prefix;
 
 	size_t blockCount;

@@ -5,6 +5,6 @@
 int main()
 {
 	TarPacker packer;
-	packer.pack("/home/osboxes/projects/TarArchiveLinux/bin/x64/Debug/drr");
+	packer.pack("/home/osboxes/projects");
 	return 0;
 }

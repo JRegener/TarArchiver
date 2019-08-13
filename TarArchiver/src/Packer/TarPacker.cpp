@@ -6,37 +6,44 @@ TarPacker::pack(const std::string & targetPath)
 	std::ofstream targetFile;
 
 	std::string targetFilename = extractName(targetPath) + ".tar";
+	std::string name = getDirFileName(targetPath);
+	std::string basePath = targetPath.substr(0, targetPath.length() - name.length());
+
 	targetFile.open(targetFilename, std::ios::binary);
 	if (!targetFile.is_open())
 	{
 		return;
 	}
 
-	std::string name = getDirFileName(targetPath);
-	std::string basePath = targetPath.substr(0, targetPath.length() - name.length());
-
-	if (!pack(targetFile, basePath, name))
+	if (!packInternal(targetFile, basePath, name))
 	{
 		targetFile.close();
 		//remove
 	}
 	else
 	{
-		addExpand(targetFile);
+		/* eof */
+		targetFile.write((char*)&emptyBuffer, BLOCK_SIZE);
+		targetFile.write((char*)&emptyBuffer, BLOCK_SIZE);
+
 		targetFile.flush();
 		targetFile.close();
 	}
 }
 
 bool
-TarPacker::pack(std::ofstream & targetFile, const std::string & path, const std::string & name)
+TarPacker::packInternal(std::ofstream & targetFile, const std::string & path, const std::string & name)
 {
 	struct stat s;
 	if (stat((path + name).c_str(), &s) == 0)
 	{
 		if (s.st_mode & S_IFDIR)
 		{
-			VectorString files = getDirectoryFiles(path + name);
+			VecStr files;
+			if (!getDirectoryFiles(path + name, files))
+			{
+				return false;
+			}
 			packDirectory(targetFile, name, s);
 			for (auto it = files.begin(); it != files.end(); ++it)
 			{
@@ -45,7 +52,7 @@ TarPacker::pack(std::ofstream & targetFile, const std::string & path, const std:
 					continue;
 				}
 
-				if (!pack(targetFile, path, name + '/' + (*it)))
+				if (!packInternal(targetFile, path, name + '/' + (*it)))
 				{
 					return false;
 				}
@@ -64,7 +71,10 @@ TarPacker::pack(std::ofstream & targetFile, const std::string & path, const std:
 		}
 		else if (s.st_mode & S_IFBLK)
 		{
-
+			if (!packBlockFile(targetFile, path, name, s))
+			{
+				return false;
+			}
 		}
 		else if (s.st_mode & S_IFIFO)
 		{
@@ -99,47 +109,44 @@ TarPacker::pack(std::ofstream & targetFile, const std::string & path, const std:
 	return true;
 }
 
-VectorString
-TarPacker::getDirectoryFiles(const std::string & directory)
+bool
+TarPacker::getDirectoryFiles(const std::string & directory, VecStr & files)
 {
-	VectorString paths;
-	
 	DIR* curDir = opendir(directory.c_str());
-	struct dirent* ent;
-	while ((ent = readdir(curDir)) != nullptr)
+	if (curDir)
 	{
-		paths.emplace_back(ent->d_name);
+		struct dirent* ent;
+		while ((ent = readdir(curDir)) != nullptr)
+		{
+			files.emplace_back(ent->d_name);
+		}
+		closedir(curDir);
+
+		return true;
 	}
-	closedir(curDir);
 
-	return paths;
-}
-
-void 
-TarPacker::addExpand(std::ofstream & output)
-{
-	output.write((char*)&emptyBuffer, BLOCK_SIZE);
-	output.write((char*)&emptyBuffer, BLOCK_SIZE);
+	return false;
 }
 
 void
-TarPacker::packDirectory(std::ofstream & targetFile, const std::string & name, struct stat & s)
+TarPacker::packDirectory(std::ofstream & targetFile, const std::string & name, const struct stat & s)
 {
 	HeaderInfo * h = createHeader(name + '/', DIRTYPE, s);
 	std::unique_ptr<HeaderInfo> headerInfo(h);
-	header = convertHeader(*headerInfo);
+	convertHeader(*headerInfo);
 
 	targetFile.write((char*)&header, BLOCK_SIZE);
 }
 
 bool 
-TarPacker::packRegFile(std::ofstream & targetFile, const std::string & path, const std::string & name, struct stat & s)
+TarPacker::packRegFile(std::ofstream & targetFile, const std::string & path, 
+	const std::string & name, const struct stat & s)
 {
 	std::ifstream fileInput;
 
 	HeaderInfo * h = createHeader(name, REGTYPE, s);
 	std::unique_ptr<HeaderInfo> headerInfo(h);
-	header = convertHeader(*headerInfo);
+	convertHeader(*headerInfo);
 
 	fileInput.open(path + name, std::ios::binary);
 	if (!fileInput.is_open())
@@ -153,6 +160,28 @@ TarPacker::packRegFile(std::ofstream & targetFile, const std::string & path, con
 
 	return true;
 }
+
+bool 
+TarPacker::packBlockFile(std::ofstream & targetFile, const std::string & path,
+	const std::string & name, const struct stat & s)
+{
+	std::ifstream fileInput;
+
+	HeaderInfo * h = createHeader(name, BLKTYPE, s);
+	std::unique_ptr<HeaderInfo> headerInfo(h);
+	convertHeader(*headerInfo);
+
+	fileInput.open(path + name, std::ios::binary);
+	if (!fileInput.is_open())
+	{
+		return false;
+	}
+
+	targetFile.write((char*)&header, BLOCK_SIZE);
+	writeContentToTargetFile(headerInfo, fileInput, targetFile);
+	fileInput.close();
+}
+
 
 void 
 TarPacker::writeContentToTargetFile(const std::unique_ptr<HeaderInfo>& headerInfo,
@@ -217,7 +246,7 @@ TarPacker::getDirFileName(const std::string & path)
 }
 
 HeaderInfo *
-TarPacker::createHeader(const std::string & name, int8_t typeflag, struct stat & s)
+TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct stat & s)
 {
 	/* in future change to switch case for create correct type of file */
 	
@@ -246,8 +275,7 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, struct stat &
 	headerInfo->version = TVERSION;
 	headerInfo->uname = pw->pw_name;
 	headerInfo->gname = gr->gr_name;
-	//headerInfo->devmajor = ;
-	//headerInfo->devminor = ;
+
 	//headerInfo->prefix = ;
 
 	switch (typeflag)
@@ -265,6 +293,14 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, struct stat &
 	}
 	break;
 
+	case CHRTYPE:
+	case BLKTYPE:
+	{
+		headerInfo->devmajor = major(s.st_dev);
+		headerInfo->devminor = minor(s.st_dev);
+	}
+	break;
+
 	default:
 		break;
 	}
@@ -276,8 +312,8 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, struct stat &
 PosixHeader
 TarPacker::convertHeader(const HeaderInfo & headerInfo)
 {
-	PosixHeader header = { 0 };
 	int8_t res[12];
+	std::memset(&header, 0, BLOCK_SIZE);
 
 	std::memcpy(header.name, headerInfo.name.c_str(), headerInfo.name.length());
 	
@@ -304,8 +340,12 @@ TarPacker::convertHeader(const HeaderInfo & headerInfo)
 	std::memcpy(header.version, headerInfo.version.c_str(), headerInfo.version.length());
 	std::memcpy(header.uname, headerInfo.uname.c_str(), headerInfo.uname.length());
 	std::memcpy(header.gname, headerInfo.gname.c_str(), headerInfo.gname.length());
-	// devmajor
-	// devminor
+
+	toOctStr(headerInfo.devmajor, res, sizeof(header.devmajor));
+	std::memcpy(header.devmajor, res, sizeof(header.devmajor));
+
+	toOctStr(headerInfo.devminor, res, sizeof(header.devminor));
+	std::memcpy(header.devminor, res, sizeof(header.devminor));
 
 	/* only at the end */
 	int64_t checkSum = calculateUnsignedCheckSum(header);
