@@ -4,7 +4,7 @@
 
 int main()
 {
-	TarPacker packer;
-	packer.pack("/home/osboxes/projects");
+	TarUnpacker packer;
+	packer.unpack("/home/osboxes/projects/TarArchiveLinux/bin/x64/Debug/soft.tar");
 	return 0;
 }

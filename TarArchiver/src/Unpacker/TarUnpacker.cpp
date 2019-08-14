@@ -148,12 +148,15 @@ TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
 	break;
 	case LNKTYPE:	/* link */
 	{
-
+		/* i don't find file with type '1' */
 	}
 	break;
 	case SYMTYPE:	/* reserved */
 	{
-
+		if (symlink(header.linkname.c_str(), header.name.c_str()))
+		{
+			return false;
+		}
 	}
 	break;
 	case CHRTYPE:	/* character special */

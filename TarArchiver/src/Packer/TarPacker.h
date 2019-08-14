@@ -27,9 +27,14 @@ public:
 
 	bool getDirectoryFiles(const std::string & directory, VecStr & files);
 
+	void addExpand(std::ofstream & output);
+
 	void packDirectory(std::ofstream & targetFile, const std::string & path, const struct stat & s);
 
 	bool packRegFile(std::ofstream & targetFile, const std::string & path, const std::string & name, const struct stat & s);
+
+	void packLink(std::ofstream & targetFile, const std::string & path, 
+		const std::string & name, const struct stat & s);
 
 	bool packBlockFile(std::ofstream & targetFile, const std::string & path, const std::string & name, const struct stat & s);
 
@@ -40,7 +45,7 @@ public:
 
 	std::string getDirFileName(const std::string & path);
 
-	HeaderInfo * createHeader(const std::string & path, int8_t typeflag, const struct stat & s);
+	HeaderInfo * createHeader(const std::string & path, int8_t typeflag, const struct stat & s, const std::string & linkname = "");
 
 	PosixHeader convertHeader(const HeaderInfo & headerInfo);
 

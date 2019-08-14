@@ -35,61 +35,7 @@ bool
 TarPacker::packInternal(std::ofstream & targetFile, const std::string & path, const std::string & name)
 {
 	struct stat s;
-	if (stat((path + name).c_str(), &s) == 0)
-	{
-		if (s.st_mode & S_IFDIR)
-		{
-			VecStr files;
-			if (!getDirectoryFiles(path + name, files))
-			{
-				return false;
-			}
-			packDirectory(targetFile, name, s);
-			for (auto it = files.begin(); it != files.end(); ++it)
-			{
-				if (*it == ".." || *it == ".")
-				{
-					continue;
-				}
-
-				if (!packInternal(targetFile, path, name + '/' + (*it)))
-				{
-					return false;
-				}
-			}
-		}
-		else if (s.st_mode & S_IFREG)
-		{
-			if (!packRegFile(targetFile, path, name, s))
-			{
-				return false;
-			}
-		}
-		else if (s.st_mode & S_IFCHR)
-		{
-			
-		}
-		else if (s.st_mode & S_IFBLK)
-		{
-			if (!packBlockFile(targetFile, path, name, s))
-			{
-				return false;
-			}
-		}
-		else if (s.st_mode & S_IFIFO)
-		{
-
-		}
-		else if (s.st_mode & S_IFLNK)
-		{
-
-		}
-		else
-		{
-			
-		}
-	}
-	else
+	if (lstat((path + name).c_str(), &s))
 	{
 		switch (errno)
 		{
@@ -104,6 +50,79 @@ TarPacker::packInternal(std::ofstream & targetFile, const std::string & path, co
 			printf("Unexpected error in _stat.\n");
 			break;
 		}
+	}
+
+	switch (s.st_mode & S_IFMT)
+	{
+	case S_IFDIR:
+	{
+		VecStr files;
+		if (!getDirectoryFiles(path + name, files))
+		{
+			return false;
+		}
+		packDirectory(targetFile, name, s);
+		for (auto it = files.begin(); it != files.end(); ++it)
+		{
+			if (*it == ".." || *it == ".")
+			{
+				continue;
+			}
+
+			if (!packInternal(targetFile, path, name + '/' + (*it)))
+			{
+				return false;
+			}
+		}
+	}
+	break;
+
+	case S_IFREG:
+	{
+		if (!packRegFile(targetFile, path, name, s))
+		{
+			return false;
+		}
+	}
+	break;
+
+	case S_IFLNK:
+	{
+		packLink(targetFile, path, name, s);
+	}
+	break;
+
+	case S_IFCHR:
+	{
+
+	}
+	break;
+
+	case S_IFBLK:
+	{
+#if 0
+		if (!packBlockFile(targetFile, path, name, s))
+		{
+			return false;
+		}
+#endif
+	}
+	break;
+
+	case S_IFIFO:
+	{
+
+	}
+	break;
+
+	case S_IFSOCK:
+	{
+
+	}
+	break;
+
+	default:
+		break;
 	}
 
 	return true;
@@ -161,10 +180,30 @@ TarPacker::packRegFile(std::ofstream & targetFile, const std::string & path,
 	return true;
 }
 
+void 
+TarPacker::packLink(std::ofstream & targetFile, const std::string & path,
+	const std::string & name, const struct stat & s)
+{
+	char buf[100];
+	ssize_t len;
+
+	if ((len = readlink((path + name).c_str(), buf, sizeof(buf) - 1)) != -1) {
+		buf[len] = '\0';
+	}
+
+	/* LNK or SYM ??? */
+	HeaderInfo * h = createHeader(name, SYMTYPE, s, std::string(buf));
+	std::unique_ptr<HeaderInfo> headerInfo(h);
+	convertHeader(*headerInfo);
+
+	targetFile.write((char*)&header, BLOCK_SIZE);
+}
+
 bool 
 TarPacker::packBlockFile(std::ofstream & targetFile, const std::string & path,
 	const std::string & name, const struct stat & s)
 {
+#if 0
 	std::ifstream fileInput;
 
 	HeaderInfo * h = createHeader(name, BLKTYPE, s);
@@ -180,6 +219,10 @@ TarPacker::packBlockFile(std::ofstream & targetFile, const std::string & path,
 	targetFile.write((char*)&header, BLOCK_SIZE);
 	writeContentToTargetFile(headerInfo, fileInput, targetFile);
 	fileInput.close();
+
+	return true;
+#endif
+	return false;
 }
 
 
@@ -235,21 +278,13 @@ TarPacker::getDirFileName(const std::string & path)
 		name.erase(0, last_slash_idx + 1);
 	}
 
-	/* if not exist extension add reverce slash '/' */
-	//const size_t period_idx = name.rfind('.');
-	//if (std::string::npos == period_idx)
-	//{
-	//	name += '/';
-	//}
-
 	return name;
 }
 
 HeaderInfo *
-TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct stat & s)
+TarPacker::createHeader(const std::string & name, int8_t typeflag, 
+	const struct stat & s, const std::string & linkname)
 {
-	/* in future change to switch case for create correct type of file */
-	
 	HeaderInfo * headerInfo = new HeaderInfo();
 	struct passwd *pw;
 	struct group *gr;
@@ -257,7 +292,6 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct 
 	pw = getpwuid(s.st_uid);
 	gr = getgrgid(s.st_gid);
 
-	/**/
 	headerInfo->name = name;
 	
 	headerInfo->mode = s.st_mode & RWX;
@@ -267,10 +301,8 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct 
 	headerInfo->mtime = s.st_mtime;
 	headerInfo->checksum = 0;
 	headerInfo->typeflag = typeflag;
-	
-	/**/
-	headerInfo->linkname = "";
 
+	headerInfo->linkname = linkname;
 	headerInfo->magic = TMAGIC;
 	headerInfo->version = TVERSION;
 	headerInfo->uname = pw->pw_name;
@@ -287,6 +319,8 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct 
 	}
 	break;
 	
+	case SYMTYPE:
+	case LNKTYPE:
 	case DIRTYPE:
 	{
 		headerInfo->size = 0;
@@ -300,6 +334,13 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag, const struct 
 		headerInfo->devminor = minor(s.st_dev);
 	}
 	break;
+
+	case FIFOTYPE:
+	{
+
+	}
+	break;
+
 
 	default:
 		break;
@@ -341,11 +382,13 @@ TarPacker::convertHeader(const HeaderInfo & headerInfo)
 	std::memcpy(header.uname, headerInfo.uname.c_str(), headerInfo.uname.length());
 	std::memcpy(header.gname, headerInfo.gname.c_str(), headerInfo.gname.length());
 
-	toOctStr(headerInfo.devmajor, res, sizeof(header.devmajor));
-	std::memcpy(header.devmajor, res, sizeof(header.devmajor));
-
-	toOctStr(headerInfo.devminor, res, sizeof(header.devminor));
-	std::memcpy(header.devminor, res, sizeof(header.devminor));
+	if (headerInfo.typeflag == BLKTYPE || headerInfo.typeflag == CHRTYPE)
+	{
+		toOctStr(headerInfo.devmajor, res, sizeof(header.devmajor));
+		std::memcpy(header.devmajor, res, sizeof(header.devmajor));
+		toOctStr(headerInfo.devminor, res, sizeof(header.devminor));
+		std::memcpy(header.devminor, res, sizeof(header.devminor));
+	}
 
 	/* only at the end */
 	int64_t checkSum = calculateUnsignedCheckSum(header);
