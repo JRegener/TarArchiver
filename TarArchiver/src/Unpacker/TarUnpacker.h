@@ -45,6 +45,10 @@ public:
 
 	void unpack(const std::string & path);
 
+	std::string extractName(const std::string & path);
+
+	std::string getDirFileName(const std::string & path);
+
 	/* Check end of file. It must contains 2 blocks size of 512 bytes at the end of file */
 	bool checkExpand(std::ifstream & finput, std::streampos & sizeOfContent);
 
@@ -57,7 +61,7 @@ public:
 
 	bool checkHeader(const HeaderInfo & headerInfo, PosixHeader & header);
 
-	bool createFileType(const HeaderInfo & headerInfo, std::ifstream & finput);
+	bool createFileType(const HeaderInfo & headerInfo, std::ifstream & finput, const std::string & basePath);
 
 	bool createDir(const HeaderInfo & header, Error & errorType);
 

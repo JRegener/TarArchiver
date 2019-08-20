@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <linux/kdev_t.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <pwd.h>
@@ -37,6 +38,9 @@ public:
 		const std::string & name, const struct stat & s);
 
 	bool packBlockFile(std::ofstream & targetFile, const std::string & path, const std::string & name, const struct stat & s);
+
+	void packFifoFile(std::ofstream & targetFile, const std::string & path,
+		const std::string & name, const struct stat & s);
 
 	void writeContentToTargetFile(const std::unique_ptr<HeaderInfo> & headerInfo,
 		std::ifstream & input, std::ofstream & output);

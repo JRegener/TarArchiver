@@ -100,18 +100,16 @@ TarPacker::packInternal(std::ofstream & targetFile, const std::string & path, co
 
 	case S_IFBLK:
 	{
-#if 0
 		if (!packBlockFile(targetFile, path, name, s))
 		{
 			return false;
 		}
-#endif
 	}
 	break;
 
 	case S_IFIFO:
 	{
-
+		packFifoFile(targetFile, path, name, s);
 	}
 	break;
 
@@ -203,26 +201,24 @@ bool
 TarPacker::packBlockFile(std::ofstream & targetFile, const std::string & path,
 	const std::string & name, const struct stat & s)
 {
-#if 0
-	std::ifstream fileInput;
-
 	HeaderInfo * h = createHeader(name, BLKTYPE, s);
 	std::unique_ptr<HeaderInfo> headerInfo(h);
 	convertHeader(*headerInfo);
 
-	fileInput.open(path + name, std::ios::binary);
-	if (!fileInput.is_open())
-	{
-		return false;
-	}
-
 	targetFile.write((char*)&header, BLOCK_SIZE);
-	writeContentToTargetFile(headerInfo, fileInput, targetFile);
-	fileInput.close();
 
 	return true;
-#endif
-	return false;
+}
+
+void 
+TarPacker::packFifoFile(std::ofstream & targetFile, const std::string & path,
+	const std::string & name, const struct stat & s)
+{
+	HeaderInfo * h = createHeader(name, FIFOTYPE, s);
+	std::unique_ptr<HeaderInfo> headerInfo(h);
+	convertHeader(*headerInfo);
+
+	targetFile.write((char*)&header, BLOCK_SIZE);
 }
 
 
@@ -330,8 +326,8 @@ TarPacker::createHeader(const std::string & name, int8_t typeflag,
 	case CHRTYPE:
 	case BLKTYPE:
 	{
-		headerInfo->devmajor = major(s.st_dev);
-		headerInfo->devminor = minor(s.st_dev);
+		headerInfo->devmajor = MAJOR(s.st_dev);
+		headerInfo->devminor = MINOR(s.st_dev);
 	}
 	break;
 

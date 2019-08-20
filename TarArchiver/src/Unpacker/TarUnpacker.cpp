@@ -7,6 +7,8 @@ TarUnpacker::unpack(const std::string & path)
 	std::ofstream targetFile;
 	std::streampos sizeOfContent;
 	
+	std::string name = getDirFileName(path);
+	std::string basePath = path.substr(0, path.length() - name.length());
 
 	inputFile.open(path, std::ios::binary);
 	if (!inputFile.is_open())
@@ -34,7 +36,7 @@ TarUnpacker::unpack(const std::string & path)
 			break;
 		}
 
-		if (!createFileType(*headerInfo, inputFile))
+		if (!createFileType(*headerInfo, inputFile, basePath))
 		{
 			/* can't create file */
 			/* stop */
@@ -46,6 +48,39 @@ TarUnpacker::unpack(const std::string & path)
 
 
 	inputFile.close();
+}
+
+std::string
+TarUnpacker::extractName(const std::string & path)
+{
+	std::string name = std::string(path);
+	const size_t last_slash_idx = name.find_last_of("\\/");
+	if (std::string::npos != last_slash_idx)
+	{
+		name.erase(0, last_slash_idx + 1);
+	}
+
+	/* remove extension */
+	const size_t period_idx = name.rfind('.');
+	if (std::string::npos != period_idx)
+	{
+		name.erase(period_idx);
+	}
+
+	return name;
+}
+
+std::string
+TarUnpacker::getDirFileName(const std::string & path)
+{
+	std::string name = std::string(path);
+	const size_t last_slash_idx = name.find_last_of("\\/");
+	if (std::string::npos != last_slash_idx)
+	{
+		name.erase(0, last_slash_idx + 1);
+	}
+
+	return name;
 }
 
 bool
@@ -124,11 +159,43 @@ TarUnpacker::checkHeader(const HeaderInfo & headerInfo, PosixHeader & header)
 }
 
 bool
-TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
+TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput, const std::string & basePath)
 {
 	/* in windows label (ÿנכûך) is regular file which contains all info from base file */
 	switch (header.typeflag)
 	{
+	case DIRTYPE:	/* directory */
+	{
+		/* create dir */
+		Error errorType;
+		const int32_t dir_err = mkdir((basePath + '/' + header.name).c_str(), 0);
+		if (dir_err)
+		{
+			/* error creating file */
+			switch (errno)
+			{
+			case EACCES:
+				errorType = Error::NO_ACCESS;
+				break;
+			case ENOENT:
+				errorType = Error::BAD_PATH;
+				break;
+			default:
+				errorType = Error::UNKNOWN_ERROR;
+			}
+
+			return false;
+		}
+
+		chmod((basePath + '/' + header.name).c_str(), header.mode);
+		errorType = Error::SUCCESS;
+
+		if (errorType != Error::SUCCESS)
+		{
+			return false;
+		}
+	}
+	break;
 	case REGTYPE:	/* regular file */
 	case AREGTYPE:	/* regular file */
 	{
@@ -143,7 +210,7 @@ TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
 		targetFile.flush();
 		targetFile.close();
 
-		chmod(("./" + header.name).c_str(), header.mode);
+		chmod((basePath + '/' + header.name).c_str(), header.mode);
 	}
 	break;
 	case LNKTYPE:	/* link */
@@ -153,7 +220,8 @@ TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
 	break;
 	case SYMTYPE:	/* reserved */
 	{
-		if (symlink(header.linkname.c_str(), header.name.c_str()))
+		if (symlink((basePath + '/' + header.linkname).c_str(), 
+			(basePath + '/' + header.name).c_str()))
 		{
 			return false;
 		}
@@ -169,21 +237,12 @@ TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
 
 	}
 	break;
-	case DIRTYPE:	/* directory */
+	case FIFOTYPE:	/* FIFO special */
 	{
-		/* enum error creation for linux and windows */
-		/* create dir */
-		Error errorType;
-		createDir(header, errorType);
-		if (errorType != Error::SUCCESS)
+		if (mkfifo((basePath + '/' + header.name).c_str(), header.mode))
 		{
 			return false;
 		}
-	}
-	break;
-	case FIFOTYPE:	/* FIFO special */
-	{
-
 	}
 	break;
 	case CONTTYPE:	/* reserved */
@@ -197,34 +256,6 @@ TarUnpacker::createFileType(const HeaderInfo & header, std::ifstream & finput)
 	}
 	break;
 	}
-
-	return true;
-}
-
-bool 
-TarUnpacker::createDir(const HeaderInfo & header, Error & errorType)
-{
-	const int32_t dir_err = mkdir(header.name.c_str(), 0);
-	if (dir_err)
-	{
-		/* error creating file */
-		switch (errno)
-		{
-		case EACCES:
-			errorType = Error::NO_ACCESS;
-			break;
-		case ENOENT:
-			errorType = Error::BAD_PATH;
-			break;
-		default:
-			errorType = Error::UNKNOWN_ERROR;
-		}
-		
-		return false;
-	}
-
-	chmod(("./" + header.name).c_str(), header.mode);
-	errorType = Error::SUCCESS;
 
 	return true;
 }
